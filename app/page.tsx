@@ -30,9 +30,23 @@ export default function Home() {
             Ethereum Mainnet · Live RPC
           </div>
         </div>
-        <button className="home-link" onClick={() => setLaunched(false)}>
-          ← Back to home
-        </button>
+        <div className="masthead-actions">
+          {/* Set NEXT_PUBLIC_DOCS_URL on Vercel once Mintlify is live. Until
+              then this link is hidden rather than pointing at a 404. */}
+          {process.env.NEXT_PUBLIC_DOCS_URL && (
+            <a
+              className="home-link"
+              href={process.env.NEXT_PUBLIC_DOCS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              API docs ↗
+            </a>
+          )}
+          <button className="home-link" onClick={() => setLaunched(false)}>
+            ← Back to home
+          </button>
+        </div>
       </header>
 
       <AddressInput onAdd={addWallet} loading={loading} />

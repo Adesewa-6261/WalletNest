@@ -1,0 +1,141 @@
+---
+title: "Quickstart"
+description: "From zero to your first authenticated response."
+---
+
+You need two keys before your first call. See [Authentication](/authentication) for why.
+
+## 1. Get an Alchemy key
+
+WalletNest reads the chain with **your** Alchemy account, not its own — so your usage is yours, billed and metered on your own plan.
+
+Sign up free at [dashboard.alchemy.com](https://dashboard.alchemy.com), create an app on **Ethereum Mainnet**, and copy the key.
+
+```bash
+export ALCHEMY_API_KEY=your_alchemy_key
+```
+
+## 2. Get a WalletNest key
+
+Keys are issued by the operator of the deployment, not self-serve. If you run WalletNest yourself:
+
+```bash
+npm run generate-key
+```
+
+That prints two things — a **secret key** (`wnk_live_…`) and its **SHA-256 hash**. Give the secret key to the consumer. Put the hash in the server's environment:
+
+```bash
+WALLETNEST_API_KEYS=<the-hash>
+```
+
+The server stores hashes only. It never sees a plaintext key at rest, so leaking the env var does not leak working keys.
+
+<Warning>
+The secret key is displayed exactly once. There is no recovery — generate a new one and swap the hash.
+</Warning>
+
+## 3. Call an endpoint
+
+Send both keys. `Authorization` proves you may call the API; `X-Alchemy-Key` pays for the data.
+
+<CodeGroup>
+
+```bash cURL
+curl https://wallet-nest-nine.vercel.app/api/v1/wallets/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 \
+  -H "Authorization: Bearer $WALLETNEST_API_KEY" \
+  -H "X-Alchemy-Key: $ALCHEMY_API_KEY"
+```
+
+```ts TypeScript
+const res = await fetch(
+  "https://wallet-nest-nine.vercel.app/api/v1/wallets/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+  {
+    headers: {
+      Authorization: `Bearer ${process.env.WALLETNEST_API_KEY}`,
+      "X-Alchemy-Key": process.env.ALCHEMY_API_KEY!,
+    },
+  }
+);
+
+if (!res.ok) {
+  const { error } = await res.json();
+  throw new Error(`${error.code}: ${error.message} (request ${error.requestId})`);
+}
+
+const wallet = await res.json();
+```
+
+```python Python
+import os, requests
+
+res = requests.get(
+    "https://wallet-nest-nine.vercel.app/api/v1/wallets/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+    headers={
+        "Authorization": f"Bearer {os.environ['WALLETNEST_API_KEY']}",
+        "X-Alchemy-Key": os.environ["ALCHEMY_API_KEY"],
+    },
+    timeout=30,
+)
+res.raise_for_status()
+wallet = res.json()
+```
+
+</CodeGroup>
+
+```json Response
+{
+  "address": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+  "nativeBalance": 1042.7,
+  "tokens": [
+    {
+      "contractAddress": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+      "symbol": "USDC",
+      "name": "USD Coin",
+      "logo": "https://…",
+      "balance": 1523.44,
+      "decimals": 6
+    }
+  ],
+  "nfts": [],
+  "transactions": []
+}
+```
+
+## 4. Aggregate several wallets
+
+`POST /v1/portfolio` fans out in parallel and rolls the results into totals.
+
+```bash
+curl https://wallet-nest-nine.vercel.app/api/v1/portfolio \
+  -H "Authorization: Bearer $WALLETNEST_API_KEY" \
+  -H "X-Alchemy-Key: $ALCHEMY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"addresses":["0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"]}'
+```
+
+This endpoint is **partially fault-tolerant**. If one address fails upstream, you still get a `200`, and that wallet carries an `error` field while the others are intact. Totals only count wallets that loaded.
+
+```ts
+const { wallets, totalNativeBalance } = await res.json();
+
+const failed = wallets.filter((w) => w.error);
+if (failed.length) {
+  console.warn(`${failed.length} wallet(s) failed`, failed.map((w) => w.address));
+}
+// totalNativeBalance already excludes the failed ones.
+```
+
+<Note>
+A bad address is different from a failed one. Malformed input rejects the **whole** request with a `400`, because that's your bug, not the chain's.
+</Note>
+
+## Running locally
+
+```bash
+npm install
+cp .env.example .env.local   # add ALCHEMY_API_KEY and WALLETNEST_API_KEYS
+npm run dev
+```
+
+The base URL becomes `http://localhost:3000/api/v1`.

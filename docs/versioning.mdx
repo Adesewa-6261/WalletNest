@@ -1,0 +1,60 @@
+---
+title: "Versioning"
+description: "What we promise not to break, and how you'll hear about it when we do."
+---
+
+The version is in the path. Today there is exactly one: `v1`.
+
+```
+https://wallet-nest-nine.vercel.app/api/v1/…
+```
+
+Every response also carries an `X-API-Version` header, so a response can always be traced back to the contract that produced it.
+
+## What is safe to depend on
+
+Within `v1`, these will not change:
+
+- The **status code** for a given `error.code`.
+- The set of **error codes** an endpoint can return.
+- The **type and meaning** of every field documented in the reference.
+- The **error envelope** shape.
+
+## What may change without notice
+
+Treat these as unstable, and your integration will survive:
+
+- **New fields** may appear on any response object. Parse permissively — don't reject unknown keys.
+- **New error codes** may be added. Handle an unrecognized `code` as a generic failure rather than crashing.
+- **`message` wording** on errors. Never parse it; branch on `code`.
+- **Ordering**, except where the reference explicitly guarantees it (tokens are sorted by balance descending; transactions newest-first).
+- **The caps.** 20 NFTs and 15 transactions per wallet are current behavior, not a contract. They will most likely rise when pagination lands.
+
+## Breaking changes
+
+Anything that violates the first list ships as `v2` at a new path. `v1` keeps working.
+
+When `v1` is eventually retired, its responses will carry a [`Deprecation`](https://www.rfc-editor.org/rfc/rfc8594) header and a `Sunset` date before any endpoint stops serving.
+
+## Removed endpoints
+
+`GET /api/wallet/{address}` — the unversioned route that predates this API — now returns `410 Gone`. It was never authenticated, so leaving it as a working alias would have been an open path around the API key. Use `GET /api/v1/wallets/{address}`.
+
+## Roadmap
+
+Known gaps, in the order they're likely to be addressed:
+
+<Steps>
+  <Step title="Rate limiting">
+    There is none today. A valid key can issue unlimited requests. Because `/v1` is bring-your-own-key, the cost of that lands on the caller's own Alchemy plan rather than ours — but it still consumes our compute.
+  </Step>
+  <Step title="Pagination">
+    Lifting the 20-NFT and 15-transaction caps via cursor pagination.
+  </Step>
+  <Step title="Keys in a datastore">
+    Enabling revocation without a redeploy, plus per-key quotas and usage.
+  </Step>
+  <Step title="More chains">
+    The service layer is chain-agnostic; only the Alchemy base URL is pinned to mainnet.
+  </Step>
+</Steps>

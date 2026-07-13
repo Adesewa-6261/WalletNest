@@ -1,0 +1,83 @@
+---
+title: "Errors"
+description: "One envelope, stable codes, and a request id to quote when things break."
+---
+
+Every failure returns the same shape, whatever went wrong:
+
+```json
+{
+  "error": {
+    "code": "invalid_address",
+    "message": "'0xnope' is not a valid Ethereum address. Expected '0x' followed by 40 hex characters.",
+    "requestId": "3f1c9c1e-4a2b-4d3e-9f00-9a1b2c3d4e5f"
+  }
+}
+```
+
+**Branch on `code`.** It is stable and machine-readable. `message` is written for humans and its wording can change in any release — parsing it will break you.
+
+`requestId` is also returned on success, in the `X-Request-Id` header. Quote it when reporting a problem; it's the key to the server-side logs.
+
+## Codes
+
+| Code | Status | What it means |
+| --- | --- | --- |
+| `unauthorized` | 401 | WalletNest key missing, malformed, or unrecognized. |
+| `invalid_address` | 400 | Not a `0x` + 40 hex character address. |
+| `invalid_request` | 400 | Body isn't valid JSON, or fails the schema. |
+| `missing_alchemy_key` | 400 | No `X-Alchemy-Key` header. |
+| `invalid_alchemy_key` | 400 | Your Alchemy key is malformed, or Alchemy rejected it. |
+| `not_found` | 404 | No such endpoint. Also returned by removed routes, with `410`. |
+| `upstream_error` | 502 | The chain data provider failed or timed out. Retry. |
+| `internal_error` | 500 | Our bug. The `requestId` will be in our logs. |
+| `server_misconfigured` | 503 | The deployment has no WalletNest API keys configured. |
+
+Note that the two Alchemy-key failures are `400`, not `502`. Alchemy rejecting *your* credential is not an upstream outage — it's a bad request, and no amount of retrying will fix it.
+
+## Which errors are worth retrying
+
+`upstream_error` is transient — Alchemy rate-limited us or a wallet with an enormous history timed out. Retry with backoff; the server already retries transient upstream failures three times before giving up, so retry *slowly*.
+
+`internal_error` may be transient. Retry once, then report it.
+
+Everything else is deterministic. A `400` or `401` will fail identically forever; retrying is just noise. That includes `invalid_alchemy_key` — fix the key, don't back off.
+
+```ts
+const RETRYABLE = new Set(["upstream_error", "internal_error"]);
+
+async function withRetry(fn: () => Promise<Response>, attempts = 3) {
+  for (let i = 0; i < attempts; i++) {
+    const res = await fn();
+    if (res.ok) return res;
+
+    const { error } = await res.json();
+    if (!RETRYABLE.has(error.code) || i === attempts - 1) {
+      throw new Error(`${error.code}: ${error.message} (request ${error.requestId})`);
+    }
+    await new Promise((r) => setTimeout(r, 2 ** i * 1000));
+  }
+  throw new Error("unreachable");
+}
+```
+
+## The one endpoint that hides its errors
+
+`POST /v1/portfolio` returns `200` even when individual wallets fail, because one dead wallet shouldn't sink the other twenty-four. Those failures appear as an `error` string on the wallet object, not as an envelope.
+
+A rejected Alchemy key is the exception: it fails the whole request with one `400`, since it would otherwise be true of every wallet in the batch.
+
+```json
+{
+  "wallets": [
+    { "address": "0xabc…", "nativeBalance": 12.4, "tokens": [], "nfts": [], "transactions": [] },
+    { "address": "0xdef…", "nativeBalance": 0, "tokens": [], "nfts": [], "transactions": [],
+      "error": "Could not reach the chain data provider. Try again shortly." }
+  ],
+  "totalNativeBalance": 12.4
+}
+```
+
+<Warning>
+A `200` from `/v1/portfolio` does not mean every wallet loaded. Check `wallet.error` before trusting any wallet's numbers. The portfolio totals already exclude failed wallets — which means a total can silently shrink if a wallet fails. If that matters to you, count the failures.
+</Warning>

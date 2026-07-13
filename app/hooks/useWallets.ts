@@ -31,7 +31,9 @@ export function useWallets() {
       setError(null);
 
       try {
-        const res = await fetch(`/api/wallet/${address}`);
+        // Internal, unversioned, no API key — see the note in that route.
+        // The browser must never call /api/v1, which requires a secret key.
+        const res = await fetch(`/api/internal/wallet/${address}`);
         if (!res.ok) throw new Error("Request failed");
         const data: WalletData = await res.json();
         setWallets((prev) => [...prev, data]);

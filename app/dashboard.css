@@ -50,6 +50,13 @@
 }
 
 /* ---- proper Home button ---- */
+.masthead-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .home-link {
   display: inline-flex;
   align-items: center;

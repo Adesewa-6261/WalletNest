@@ -1,0 +1,45 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "theme": "mint",
+  "name": "WalletNest",
+  "description": "Cross-wallet Ethereum asset data as a read-only API.",
+  "colors": {
+    "primary": "#6366f1",
+    "light": "#a5b4fc",
+    "dark": "#4338ca"
+  },
+  "favicon": "/favicon.svg",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guides",
+        "groups": [
+          {
+            "group": "Getting started",
+            "pages": ["index", "quickstart"]
+          },
+          {
+            "group": "Core concepts",
+            "pages": ["authentication", "errors", "versioning"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "openapi": "openapi.json"
+      }
+    ]
+  },
+  "navbar": {
+    "primary": {
+      "type": "button",
+      "label": "Open the dashboard",
+      "href": "https://wallet-nest-nine.vercel.app/"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/Adesewa-6261/WalletNest"
+    }
+  }
+}

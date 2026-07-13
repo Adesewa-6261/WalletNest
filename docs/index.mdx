@@ -1,0 +1,50 @@
+---
+title: "WalletNest API"
+description: "Read-only Ethereum wallet data — balances, tokens, NFTs, and transfers — normalized into stable shapes."
+---
+
+WalletNest reads Ethereum wallets and gives you back clean, predictable JSON. No smart contracts, no writes, no signing. You hand it an address; it hands you what that address holds.
+
+Under the hood it talks to [Alchemy](https://alchemy.com) and normalizes the response, so you get the same shape whether a token has metadata or not, and whether a wallet has one NFT or a thousand.
+
+**It reads the chain with your Alchemy key, not ours.** Every request carries your own key, so your usage is billed to your account and metered on your own plan. See [Authentication](/authentication).
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Make your first authenticated request in about two minutes.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api-reference">
+    Every endpoint, generated from the OpenAPI spec.
+  </Card>
+  <Card title="Authentication" icon="key" href="/authentication">
+    How API keys work, and where they must never go.
+  </Card>
+  <Card title="Errors" icon="triangle-exclamation" href="/errors">
+    The error envelope and every code it can carry.
+  </Card>
+</CardGroup>
+
+## What you can do
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /v1/wallets/{address}` | Everything about one wallet |
+| `POST /v1/portfolio` | Up to 25 wallets, aggregated into portfolio totals |
+
+## What it does not do
+
+Being clear about the edges up front saves you an integration bug later.
+
+- **You supply the Alchemy key.** There is no free data tier. Get one at [dashboard.alchemy.com](https://dashboard.alchemy.com).
+- **Ethereum mainnet only.** No L2s, no testnets.
+- **No pagination in v1.** NFTs cap at 20 per wallet, transfers at 15. The `totalNftCount` in a portfolio response counts what was *returned*, not what is *owned*.
+- **No prices.** Balances are token quantities, not fiat values.
+- **Numbers are for display.** Balances arrive as JSON numbers, already scaled by `decimals`. A balance large enough to exceed IEEE-754's safe integer range will lose precision. Don't settle trades on them.
+
+## Base URL
+
+```
+https://wallet-nest-nine.vercel.app/api/v1
+```
+
+The machine-readable spec is served, unauthenticated, from [`/api/v1/openapi.json`](https://wallet-nest-nine.vercel.app/api/v1/openapi.json). Point your client generator straight at it.

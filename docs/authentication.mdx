@@ -1,0 +1,96 @@
+---
+title: "Authentication"
+description: "The two keys every request needs, how they're stored, and the one place they must never appear."
+---
+
+Every `/v1` request carries **two** credentials, and they do different jobs:
+
+| Header | What it is | What it does |
+| --- | --- | --- |
+| `Authorization: Bearer wnk_…` | Your **WalletNest** key | Grants you access to this API |
+| `X-Alchemy-Key: …` | Your **Alchemy** key | Pays for the chain data |
+
+The only endpoint that needs neither is `/v1/openapi.json` — a spec that describes how to authenticate is useless behind authentication.
+
+## Bring your own Alchemy key
+
+WalletNest does not resell chain data. It normalizes it. The actual blockchain reads happen against **your** [Alchemy](https://dashboard.alchemy.com) account, using the key you send on each request.
+
+That means your usage is billed to you, metered by Alchemy's own dashboard, and subject to your own plan's limits. It also means WalletNest's quota can never be exhausted by your traffic, or anyone else's.
+
+Get a key free at [dashboard.alchemy.com](https://dashboard.alchemy.com): create an app on **Ethereum Mainnet** and copy the key. It must match `^[A-Za-z0-9_-]{16,64}$` — the key is placed into a request URL, so anything outside that character set is rejected before a single call is made.
+
+```bash
+curl https://wallet-nest-nine.vercel.app/api/v1/wallets/0xd8dA…6045 \
+  -H "Authorization: Bearer $WALLETNEST_API_KEY" \
+  -H "X-Alchemy-Key: $ALCHEMY_API_KEY"
+```
+
+<Note>
+WalletNest never stores, logs, or caches your Alchemy key. It is read from the request header, used for that request, and discarded.
+</Note>
+
+### When the Alchemy key is wrong
+
+Both failures are `400`, not `5xx` — nothing on our side is broken, and retrying unchanged will fail identically.
+
+- **`missing_alchemy_key`** — you didn't send the header.
+- **`invalid_alchemy_key`** — the key is malformed, or Alchemy rejected it. Check that it's active and enabled for Ethereum mainnet.
+
+On `POST /v1/portfolio`, a rejected Alchemy key fails the **whole request** with a single `400`, rather than appearing as a separate error on each of your 25 wallets. One cause deserves one error.
+
+## Sending your WalletNest key
+
+Either header works. `Authorization` is preferred; it's what the reference examples use.
+
+```bash
+# Preferred
+curl … -H "Authorization: Bearer wnk_live_xxxxxxxx"
+
+# Also accepted
+curl … -H "X-API-Key: wnk_live_xxxxxxxx"
+```
+
+If an `Authorization` header is present but isn't a well-formed `Bearer` token, the request is rejected — `X-API-Key` is not consulted as a fallback. This prevents a malformed header silently masking the credential you meant to send.
+
+Access is checked before anything else. Without a valid WalletNest key you get a `401`, even if your Alchemy key is perfect.
+
+## Never ship either key to a browser
+
+<Warning>
+An API key in client-side JavaScript is not a secret. It is in the bundle, in devtools, and in the network tab. Anyone who loads the page has it. This applies to your Alchemy key just as much as your WalletNest key — arguably more, since that one has your billing attached.
+</Warning>
+
+This API is **server-to-server**. Call it from your backend, a serverless function, or a script — never from a React component, a mobile app, or anything else the user controls.
+
+If you need to surface wallet data in a browser, proxy it: your frontend calls *your* backend, your backend holds both keys and calls WalletNest. That is exactly how the WalletNest dashboard works, and why its own UI does not call `/v1` at all.
+
+## How keys are stored
+
+The server never stores a plaintext key. It stores SHA-256 hashes in the `WALLETNEST_API_KEYS` environment variable, and compares digests in constant time.
+
+```
+WALLETNEST_API_KEYS=<sha256-hex>,<sha256-hex>
+```
+
+Two consequences worth knowing before you build on this:
+
+<AccordionGroup>
+  <Accordion title="Revoking a key requires a redeploy">
+    Keys live in the environment, not a database. To revoke one, remove its hash from `WALLETNEST_API_KEYS` and redeploy. There is no instant kill switch.
+  </Accordion>
+  <Accordion title="There is no per-key rate limiting or usage tracking">
+    A key is a boolean — valid or not. It carries no owner, no quota, no scope, and no request history. If you need any of that, keys must move to a datastore.
+  </Accordion>
+</AccordionGroup>
+
+If `WALLETNEST_API_KEYS` is empty or contains no valid hashes, the API returns `503 server_misconfigured` for every request. It fails **closed**: a deployment with no keys configured is a broken deployment, not an open one.
+
+## Rotating a key
+
+1. `npm run generate-key` to mint the replacement.
+2. Add the new hash to `WALLETNEST_API_KEYS` **alongside** the old one, and deploy. Both keys now work.
+3. Move the consumer onto the new key.
+4. Remove the old hash and deploy again.
+
+Overlapping the two hashes is what makes this zero-downtime. Skipping step 2 means a window where neither key works.
