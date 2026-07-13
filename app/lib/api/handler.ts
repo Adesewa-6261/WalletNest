@@ -37,7 +37,34 @@ function baseHeaders(requestId: string): Record<string, string> {
     "X-API-Version": API_VERSION,
     // Wallet data changes every block; never let a CDN or browser hold it.
     "Cache-Control": "no-store",
+    ...CORS_HEADERS,
   };
+}
+
+// Allow cross-origin calls so browser-based API explorers (the docs playground,
+// Swagger UI, Postman's web client) can reach v1 directly.
+//
+// This is safe *because* auth is header-based, not cookie-based: a browser
+// cannot smuggle a credential it doesn't already have, and we never send
+// Access-Control-Allow-Credentials. Anyone calling from a browser has already
+// chosen to expose their own key — which the docs tell them not to do.
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, X-API-Key, X-Alchemy-Key, Content-Type",
+  "Access-Control-Max-Age": "86400",
+  // Let a browser client read the request id when reporting a failure.
+  "Access-Control-Expose-Headers": "X-Request-Id, X-API-Version",
+};
+
+/**
+ * Preflight handler. Browsers send OPTIONS before any request carrying custom
+ * headers (which ours all do), and will abort if it isn't answered with the
+ * matching Allow-* headers. Unauthenticated by necessity — a preflight cannot
+ * carry credentials.
+ */
+export function preflight(): NextResponse {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS });
 }
 
 /**

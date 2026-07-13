@@ -1,4 +1,4 @@
-import { withApiV1 } from "@/app/lib/api/handler";
+import { withApiV1, preflight } from "@/app/lib/api/handler";
 import { fetchWallet } from "@/app/lib/alchemy";
 
 // node:crypto (timing-safe key comparison) is unavailable on the edge runtime.
@@ -14,3 +14,6 @@ export const GET = withApiV1<{ address: string }>(
   async (_request, { params }, caller) =>
     fetchWallet(params.address.trim(), caller.alchemyKey)
 );
+
+// Answers the browser's CORS preflight so in-browser API explorers can call us.
+export const OPTIONS = preflight;

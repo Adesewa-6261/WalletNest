@@ -1,4 +1,4 @@
-import { withApiV1 } from "@/app/lib/api/handler";
+import { withApiV1, preflight } from "@/app/lib/api/handler";
 import { ApiError } from "@/app/lib/api/errors";
 import { getWalletData, isValidAddress } from "@/app/lib/alchemy";
 import { aggregatePortfolio } from "@/app/lib/aggregate";
@@ -78,3 +78,6 @@ export const POST = withApiV1(async (request, _context, caller) => {
 
   return aggregatePortfolio(wallets);
 });
+
+// Answers the browser's CORS preflight so in-browser API explorers can call us.
+export const OPTIONS = preflight;
