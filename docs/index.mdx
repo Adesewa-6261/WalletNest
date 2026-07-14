@@ -47,4 +47,25 @@ Being clear about the edges up front saves you an integration bug later.
 https://wallet-nest-nine.vercel.app/api/v1
 ```
 
+This is a prefix, not a page — append an endpoint to it:
+
+```
+https://wallet-nest-nine.vercel.app/api/v1/wallets/0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+```
+
 The machine-readable spec is served, unauthenticated, from [`/api/v1/openapi.json`](https://wallet-nest-nine.vercel.app/api/v1/openapi.json). Point your client generator straight at it.
+
+---
+
+## Who built this
+
+WalletNest is designed, built, and maintained by **Adefoluke Adesewa** — the API, the [dashboard](https://wallet-nest-nine.vercel.app), and these docs.
+
+<CardGroup cols={2}>
+  <Card title="LinkedIn" icon="linkedin" href="https://www.linkedin.com/in/adefoluke-adesewa">
+    Adefoluke Adesewa
+  </Card>
+  <Card title="GitHub" icon="github" href="https://github.com/Adesewa-6261/WalletNest">
+    Source for the API and dashboard
+  </Card>
+</CardGroup>

@@ -5,8 +5,8 @@
     "version": "1.0.0",
     "description": "Read-only Ethereum wallet data: native balance, ERC-20 tokens, NFTs, and recent transfers. All data is sourced from Alchemy and normalized into stable shapes.\n\nEvery request needs **two** credentials:\n\n1. `Authorization: Bearer wnk_...` — your WalletNest API key, which grants access.\n2. `X-Alchemy-Key: ...` — your own [Alchemy](https://dashboard.alchemy.com) key, which pays for the chain data.\n\nThis is bring-your-own-key: you are billed by Alchemy for your own usage, and WalletNest's quota is never spent on your behalf.\n\nThis API is server-to-server. Neither key may be embedded in a browser or mobile client.",
     "contact": {
-      "name": "WalletNest",
-      "url": "https://github.com/Adesewa-6261/WalletNest"
+      "name": "Adefoluke Adesewa",
+      "url": "https://www.linkedin.com/in/adefoluke-adesewa"
     },
     "license": { "name": "MIT" }
   },
