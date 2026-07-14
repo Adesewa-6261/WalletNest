@@ -1,36 +1,18 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { db, type ApiKeyRow } from "../db";
 import { ApiError } from "./errors";
 
-// API keys live in the WALLETNEST_API_KEYS env var as comma-separated
-// SHA-256 hashes (hex), never as plaintext. Generate one with:
+// API keys are issued self-serve: a user signs up, creates a key in the
+// dashboard, and it works immediately. No redeploy, because keys live in the
+// database rather than in an environment variable.
 //
-//   npm run generate-key
-//
-// The tradeoff of storing keys in env: there is no per-key metadata, no usage
-// tracking, and revoking a key means editing the env var and redeploying.
-// That is acceptable for a small number of trusted consumers. Once you need
-// self-serve keys, move this lookup to a database (Vercel KV / Postgres) —
-// only `allowedHashes` below has to change.
+// WALLETNEST_API_KEYS still works, as a comma-separated list of SHA-256 hashes.
+// It is the bootstrap path — the keys that existed before there was a database,
+// and the escape hatch if the database is ever unreachable. New keys should
+// come from the dashboard.
 
 const KEY_PREFIX = "wnk_";
 const SHA256_BYTES = 32;
-
-// Parsed once per warm serverless instance. Env cannot change without a
-// redeploy, which gives us a fresh instance anyway.
-let cachedHashes: Buffer[] | null = null;
-
-function allowedHashes(): Buffer[] {
-  if (cachedHashes) return cachedHashes;
-
-  const raw = process.env.WALLETNEST_API_KEYS ?? "";
-  cachedHashes = raw
-    .split(",")
-    .map((h) => h.trim().toLowerCase())
-    .filter((h) => /^[0-9a-f]{64}$/.test(h))
-    .map((h) => Buffer.from(h, "hex"));
-
-  return cachedHashes;
-}
 
 // Pull the key out of either accepted header. Bearer wins if both are present.
 function extractKey(headers: Headers): string | null {
@@ -44,12 +26,27 @@ function extractKey(headers: Headers): string | null {
   return headers.get("x-api-key");
 }
 
+// ---------- legacy: hashes in the environment ----------
+
+let cachedEnvHashes: Buffer[] | null = null;
+
+function envHashes(): Buffer[] {
+  if (cachedEnvHashes) return cachedEnvHashes;
+
+  cachedEnvHashes = (process.env.WALLETNEST_API_KEYS ?? "")
+    .split(",")
+    .map((h) => h.trim().toLowerCase())
+    .filter((h) => /^[0-9a-f]{64}$/.test(h))
+    .map((h) => Buffer.from(h, "hex"));
+
+  return cachedEnvHashes;
+}
+
 // Constant-time membership test. Both sides are always 32 bytes because they
-// are SHA-256 digests, so timingSafeEqual never throws on a length mismatch —
-// which matters, since a length check would itself leak information.
-function isKnownHash(candidate: Buffer): boolean {
+// are SHA-256 digests, so timingSafeEqual never throws on a length mismatch.
+function matchesEnvHash(candidate: Buffer): boolean {
   let matched = false;
-  for (const known of allowedHashes()) {
+  for (const known of envHashes()) {
     if (candidate.length === SHA256_BYTES && timingSafeEqual(candidate, known)) {
       matched = true;
     }
@@ -57,29 +54,54 @@ function isKnownHash(candidate: Buffer): boolean {
   return matched;
 }
 
+// ---------- database-backed keys ----------
+
+async function findDbKey(keyHashHex: string): Promise<ApiKeyRow | null> {
+  const sql = db();
+
+  // Looked up on every request, deliberately uncached. A cache would mean a
+  // revoked key kept working until it expired — and instant revocation is the
+  // whole reason keys moved into the database. One indexed lookup is a fair
+  // price for that.
+  //
+  // Comparing hashes (not the key itself) means a timing side-channel here
+  // could only reveal a hash, which is already public-ish. No secret leaks.
+  const rows = (await sql`
+    SELECT id, user_id, name, key_hash, key_prefix, created_at, last_used_at, revoked_at
+    FROM api_keys
+    WHERE key_hash = ${keyHashHex}
+    LIMIT 1
+  `) as ApiKeyRow[];
+
+  return rows[0] ?? null;
+}
+
+/** Best-effort "last used" stamp. Never blocks or fails the request. */
+function touchKey(keyId: string): void {
+  const sql = db();
+  void sql`UPDATE api_keys SET last_used_at = now() WHERE id = ${keyId}`.catch(
+    (err) => console.error("failed to stamp last_used_at", err)
+  );
+}
+
 export interface AuthenticatedCaller {
   /** First 8 hex chars of the key's hash. Safe to log; identifies the key. */
   keyId: string;
+  /** The owning account, when the key came from the database. */
+  userId: string | null;
 }
 
 /**
  * Verifies the caller's API key, or throws.
  *
- * Fails closed: if no keys are configured, every request is rejected with a
- * 503 rather than being let through. An unconfigured deploy is a broken deploy,
- * not an open one.
+ * Order matters: the database is the source of truth for keys issued through
+ * the dashboard, and the environment list is only consulted as a fallback. A
+ * key revoked in the database is dead even if its hash somehow also appears in
+ * the environment — revocation must never be silently overridden.
  */
-export function authenticate(request: Request): AuthenticatedCaller {
-  if (allowedHashes().length === 0) {
-    console.error(
-      "WALLETNEST_API_KEYS is unset or contains no valid SHA-256 hashes — refusing all API requests."
-    );
-    throw new ApiError(
-      "server_misconfigured",
-      "This deployment has no API keys configured."
-    );
-  }
-
+export async function authenticate(
+  request: Request
+): Promise<AuthenticatedCaller> {
   const key = extractKey(request.headers);
   if (!key) {
     throw new ApiError(
@@ -96,12 +118,44 @@ export function authenticate(request: Request): AuthenticatedCaller {
   }
 
   const digest = createHash("sha256").update(key).digest();
-  if (!isKnownHash(digest)) {
-    // Deliberately identical wording to the missing-key case would be unhelpful
-    // here; a caller needs to distinguish "I forgot the header" from "my key is
-    // dead". Neither message reveals anything about which keys exist.
-    throw new ApiError("unauthorized", "Unrecognized API key.");
+  const digestHex = digest.toString("hex");
+
+  let row: ApiKeyRow | null = null;
+  let dbReachable = true;
+
+  try {
+    row = await findDbKey(digestHex);
+  } catch (err) {
+    // The database is down. Fall through to the environment list so that
+    // bootstrap keys still work, rather than taking the whole API down with it.
+    console.error("API key lookup failed; falling back to env keys", err);
+    dbReachable = false;
   }
 
-  return { keyId: digest.toString("hex").slice(0, 8) };
+  if (row) {
+    if (row.revoked_at) {
+      throw new ApiError(
+        "unauthorized",
+        "This API key has been revoked. Create a new one in your dashboard."
+      );
+    }
+
+    touchKey(row.id);
+    return { keyId: digestHex.slice(0, 8), userId: row.user_id };
+  }
+
+  if (matchesEnvHash(digest)) {
+    return { keyId: digestHex.slice(0, 8), userId: null };
+  }
+
+  // Nothing matched. If the database was unreachable we cannot be certain the
+  // key is invalid — say so honestly rather than accusing the caller.
+  if (!dbReachable && envHashes().length === 0) {
+    throw new ApiError(
+      "internal_error",
+      "Unable to verify API keys right now. Try again shortly."
+    );
+  }
+
+  throw new ApiError("unauthorized", "Unrecognized API key.");
 }

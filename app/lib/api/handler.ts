@@ -85,7 +85,7 @@ export function withApiV1<TParams = Record<string, string>>(
     const requestId = randomUUID();
 
     try {
-      const caller = authenticate(request);
+      const caller = await authenticate(request);
       const alchemyKey = requireAlchemyKey(request);
       const payload = await handler(request, context, {
         ...caller,
