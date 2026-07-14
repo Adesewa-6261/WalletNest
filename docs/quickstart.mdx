@@ -17,23 +17,29 @@ export ALCHEMY_API_KEY=your_alchemy_key
 
 ## 2. Get a WalletNest key
 
-Keys are issued by the operator of the deployment, not self-serve. If you run WalletNest yourself:
+Keys are self-serve. Nobody needs to issue you one.
+
+<Steps>
+  <Step title="Create an account">
+    Sign up at [wallet-nest-nine.vercel.app/signup](https://wallet-nest-nine.vercel.app/signup).
+  </Step>
+  <Step title="Create a key">
+    You land on your keys page. Give the key a name — "my bot", "staging" — and hit **Create key**.
+  </Step>
+  <Step title="Copy it immediately">
+    The key is shown once. Copy it now.
+  </Step>
+</Steps>
 
 ```bash
-npm run generate-key
+export WALLETNEST_API_KEY=wnk_live_your_key_here
 ```
-
-That prints two things — a **secret key** (`wnk_live_…`) and its **SHA-256 hash**. Give the secret key to the consumer. Put the hash in the server's environment:
-
-```bash
-WALLETNEST_API_KEYS=<the-hash>
-```
-
-The server stores hashes only. It never sees a plaintext key at rest, so leaking the env var does not leak working keys.
 
 <Warning>
-The secret key is displayed exactly once. There is no recovery — generate a new one and swap the hash.
+The key is displayed exactly once, at creation. We store only a SHA-256 hash of it, so we genuinely cannot show it to you again — not even if you ask. Lost it? Revoke it and create another.
 </Warning>
+
+You can create as many keys as you like, and **revoke any of them instantly** from the same page. Revocation takes effect on the very next request — there is no cache to wait out.
 
 ## 3. Call an endpoint
 

@@ -51,8 +51,8 @@ Known gaps, in the order they're likely to be addressed:
   <Step title="Pagination">
     Lifting the 20-NFT and 15-transaction caps via cursor pagination.
   </Step>
-  <Step title="Keys in a datastore">
-    Enabling revocation without a redeploy, plus per-key quotas and usage.
+  <Step title="Per-key quotas and usage">
+    Keys now live in a database, so they can be revoked instantly and self-served. They still carry no quota, no scopes, and only a coarse "last used" timestamp.
   </Step>
   <Step title="More chains">
     The service layer is chain-agnostic; only the Alchemy base URL is pinned to mainnet.

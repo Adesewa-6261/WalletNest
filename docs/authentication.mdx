@@ -65,32 +65,47 @@ This API is **server-to-server**. Call it from your backend, a serverless functi
 
 If you need to surface wallet data in a browser, proxy it: your frontend calls *your* backend, your backend holds both keys and calls WalletNest. That is exactly how the WalletNest dashboard works, and why its own UI does not call `/v1` at all.
 
+## Getting a key
+
+Sign up at [/signup](https://wallet-nest-nine.vercel.app/signup) and create one. It's self-serve — no waiting on anyone.
+
+Create as many as you like: one per app, one per environment. Naming them ("my bot", "staging") makes it obvious which to revoke when a laptop goes missing.
+
 ## How keys are stored
 
-The server never stores a plaintext key. It stores SHA-256 hashes in the `WALLETNEST_API_KEYS` environment variable, and compares digests in constant time.
+The server never stores your key. It stores a **SHA-256 hash** of it.
 
-```
-WALLETNEST_API_KEYS=<sha256-hex>,<sha256-hex>
-```
+That's why the key is shown exactly once, at creation. There is no "reveal key" button and there never will be — implementing one would mean storing the secret, which is precisely what we're avoiding. If somebody dumped our database tomorrow, they would get a list of hashes and no working keys.
 
-Two consequences worth knowing before you build on this:
+Lost a key? You can't recover it. Revoke it and create another.
 
-<AccordionGroup>
-  <Accordion title="Revoking a key requires a redeploy">
-    Keys live in the environment, not a database. To revoke one, remove its hash from `WALLETNEST_API_KEYS` and redeploy. There is no instant kill switch.
-  </Accordion>
-  <Accordion title="There is no per-key rate limiting or usage tracking">
-    A key is a boolean — valid or not. It carries no owner, no quota, no scope, and no request history. If you need any of that, keys must move to a datastore.
-  </Accordion>
-</AccordionGroup>
+## Revoking a key
 
-If `WALLETNEST_API_KEYS` is empty or contains no valid hashes, the API returns `503 server_misconfigured` for every request. It fails **closed**: a deployment with no keys configured is a broken deployment, not an open one.
+Hit **Revoke** on your keys page. It takes effect on the **very next request** — key verification reads the database every time and is deliberately uncached, so there is no window where a revoked key still works.
+
+Revoking is permanent and cannot be undone. Your other keys are unaffected, which is the reason to use a separate key per app: when one leaks, you kill that one and nothing else goes down.
 
 ## Rotating a key
 
-1. `npm run generate-key` to mint the replacement.
-2. Add the new hash to `WALLETNEST_API_KEYS` **alongside** the old one, and deploy. Both keys now work.
-3. Move the consumer onto the new key.
-4. Remove the old hash and deploy again.
+1. Create the new key.
+2. Deploy it to your app.
+3. Confirm traffic is flowing (the keys page shows **last used** for each key).
+4. Revoke the old one.
 
-Overlapping the two hashes is what makes this zero-downtime. Skipping step 2 means a window where neither key works.
+Doing it in that order means zero downtime — both keys are live during the handover.
+
+## What a key does *not* carry
+
+Being straight about the limits:
+
+<AccordionGroup>
+  <Accordion title="No per-key rate limits or quotas">
+    A key is valid or it isn't. There's no request cap. Since v1 is bring-your-own-Alchemy-key, heavy usage bills to *your* Alchemy plan, not ours — but there is no ceiling enforced here.
+  </Accordion>
+  <Accordion title="No scopes">
+    Every key can call every endpoint. There is no read-only or single-endpoint key.
+  </Accordion>
+  <Accordion title="Usage tracking is coarse">
+    We record **last used**, and nothing else. No per-request history, no analytics.
+  </Accordion>
+</AccordionGroup>
